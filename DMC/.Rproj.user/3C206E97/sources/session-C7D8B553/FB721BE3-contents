@@ -1,0 +1,91 @@
+
+R version 4.2.1 (2022-06-23) -- "Funny-Looking Kid"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-apple-darwin17.0 (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+[Previously saved workspace restored]
+
+> rm(list=ls())
+> source ("dmc/dmc.R")
+Loading required package: msm
+Loading required package: parallel
+Loading required package: truncdist
+Loading required package: stats4
+Loading required package: evd
+Loading required package: coda
+Loading required package: loo
+This is loo version 2.5.1
+- Online documentation and vignettes at mc-stan.org/loo
+- As of v2.0.0 loo defaults to 1 core but we recommend using as many as possible. Use the 'cores' argument or set options(mc.cores = NUM_CORES) for an entire session. 
+Loading required package: hypergeo
+Loading required package: statmod
+Loading required package: pracma
+Loading required package: numDeriv
+
+Attaching package: ‘numDeriv’
+
+The following objects are masked from ‘package:pracma’:
+
+    grad, hessian, jacobian
+
+Loading required package: vioplot
+Loading required package: sm
+Package 'sm', version 2.2-5.7: type help(sm) for summary information
+Loading required package: zoo
+
+Attaching package: ‘zoo’
+
+The following objects are masked from ‘package:base’:
+
+    as.Date, as.Date.numeric
+
+Loading required package: ggplot2
+Loading required package: mvtnorm
+Loading required package: Matrix
+
+Attaching package: ‘Matrix’
+
+The following objects are masked from ‘package:pracma’:
+
+    expm, lu, tril, triu
+
+Loading required package: Brobdingnag
+
+Attaching package: ‘Brobdingnag’
+
+The following objects are masked from ‘package:Matrix’:
+
+    diag, t
+
+The following objects are masked from ‘package:base’:
+
+    diag, t
+
+Loading required package: stringr
+> load_model ("EXG-SS","exgSS.R")
+> Rcpp::sourceCpp(file = "dmc/models/EXG-SS/dists.cpp")
+> load("exg2C.RData")
+> system.time({
++   samplesC2c <- RUN.dmc(samplesC2)
++ })
+   user  system elapsed 
+160.211   2.038 162.665 
+> save(data,samples,samplesC2,samplesC2c,file="exg2C.RData")
+> 
+> proc.time()
+   user  system elapsed 
+167.076   2.760 174.541 

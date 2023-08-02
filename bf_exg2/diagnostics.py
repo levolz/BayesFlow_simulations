@@ -34,7 +34,10 @@ class Diagnostics:
             prior_out["prior_draws"], context_batch
         )
         out_dict = {
-            "parameters": prior_out["prior_draws"],
+            "parameters": (
+                (prior_out["prior_draws"] - self.generative_model.prior_mu)
+                / self.generative_model.prior_sd
+            ),
             "summary_conditions": sim_data,
         }
         return out_dict
@@ -54,7 +57,6 @@ class Diagnostics:
             post_samples = self.amortizer.sample(validation_sims, n_samples=n_samples)
         elif isinstance(size, int):
             validation_sims = self._validation_sim(batch_size=n_val_batch, trials=size)
-            print(validation_sims)
             post_samples = self.amortizer.sample(validation_sims, n_samples=n_samples)
         elif isinstance(size, dict):
             validation_sims = {}
@@ -73,53 +75,53 @@ class Diagnostics:
             self.post_samples = post_samples
 
     def plot_posterior_recovery(self, standardized=False, **kwargs):
+        save = kwargs.pop("save") if "save" in kwargs else False
         if "validation_sims" in kwargs:
-            validation_sims = kwargs["validation_sims"]
+            validation_sims = kwargs.pop("validation_sims")
             post_samples = kwargs["post_samples"]
         else:
             validation_sims = self.validation_sims
             post_samples = self.post_samples
         if isinstance(post_samples, np.ndarray):
             if not standardized:
-                post_samps = (
+                kwargs["post_samples"] = (
                     post_samples * self.generative_model.prior_sd
                     + self.generative_model.prior_mu
                 )
-                val_pars = (
+                kwargs["prior_samples"] = (
                     validation_sims["parameters"] * self.generative_model.prior_sd
                     + self.generative_model.prior_mu
                 )
             else:
-                post_samps = post_samples
-                val_pars = validation_sims["parameters"]
+                kwargs["post_samples"] = post_samples
+                kwargs["prior_samples"] = validation_sims["parameters"]
+
             plot_recovery(
-                post_samps,
-                val_pars,
                 param_names=self.generative_model.prior.param_names,
+                **kwargs,
             )
             if "save" in kwargs and kwargs["save"]:
                 plt.savefig(f"{DIRS['figures']}/{self.name}.png")
         elif isinstance(post_samples, dict):
             for key in post_samples:
                 if not standardized:
-                    post_samps = (
+                    kwargs["post_samples"] = (
                         post_samples[key] * self.generative_model.prior_sd
                         + self.generative_model.prior_mu
                     )
-                    val_pars = (
+                    kwargs["prior_samples"] = (
                         validation_sims[key]["parameters"]
                         * self.generative_model.prior_sd
                         + self.generative_model.prior_mu
                     )
                 else:
-                    post_samps = post_samples[key]
-                    val_pars = validation_sims[key]["parameters"]
+                    kwargs["post_samples"] = post_samples[key]
+                    kwargs["prior_samples"] = validation_sims[key]["parameters"]
                 plot_recovery(
-                    post_samps,
-                    val_pars,
                     param_names=self.generative_model.prior.param_names,
+                    **kwargs,
                 )
-                if "save" in kwargs and kwargs["save"]:
+                if save:
                     plt.savefig(f"{DIRS['figures']}/{self.name}_{key}.png")
 
 
@@ -167,7 +169,10 @@ class Inference:
                     prior_out["prior_draws"], context_batch
                 )
                 data = {
-                    "parameters": prior_out["prior_draws"],
+                    "parameters": (
+                        prior_out["prior_draws"] - self.generative_model.prior_mu
+                    )
+                    / self.generative_model.prior_sd,
                     "summary_conditions": sim_data,
                 }
         if save:
@@ -178,10 +183,10 @@ class Inference:
     def save_for_dmc(self, name=None):
         if name is None:
             name = self.name
-        os.makedirs(f"{DIRS['validations_data']}/{name}", exist_ok=True)
+        os.makedirs(f"{DIRS['validation_data']}/{name}", exist_ok=True)
         for i in range(self.parameters.shape[0]):
             with open(
-                f"{DIRS['validations_data']}/{name}/{name}_{i}.csv",
+                f"{DIRS['validation_data']}/{name}/{name}_{i}.csv",
                 "wt",
                 newline="",
                 encoding="utf-8",
@@ -189,7 +194,7 @@ class Inference:
                 writer = csv.writer(f)
                 writer.writerows(self.data[i, :, :])
         with open(
-            f"{DIRS['validations_data']}/{name}_params.csv",
+            f"{DIRS['validation_data']}/{name}_params.csv",
             "wt",
             newline="",
             encoding="utf-8",
@@ -200,7 +205,7 @@ class Inference:
                 + self.generative_model.prior_mu
             )
 
-    def sample_posterior(self, n_samples, _return=False, **kwargs):
+    def sample_posterior(self, n_samples, standardize=False, _return=False, **kwargs):
         if "data" in kwargs:
             data = kwargs["data"]
         else:
@@ -215,6 +220,12 @@ class Inference:
             "summary_conditions": data,
         }
         posterior_samples = self.amortizer.sample(use_data, n_samples=n_samples)
-        self.posterior_samples = posterior_samples
+        if standardize:
+            self.posterior_samples = posterior_samples
+        else:
+            self.posterior_samples = (
+                posterior_samples * self.generative_model.prior_sd
+                + self.generative_model.prior_mu
+            )
         if _return:
             return posterior_samples

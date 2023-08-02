@@ -25,22 +25,22 @@ STAIRCASE = {
 }
 
 TRAINER_SETUP = {
-    "summary_dim": 4,
+    "summary_dim": 12,  # 2x no. parameters
     "num_coupling_layers": 4,
     "max_to_keep": 8,
-    "checkpoint_interval": 32,
+    "checkpoint_interval": None,
 }
 
 TRAINING_SETTINGS = {
-    "num_epochs": 128,
-    "iter_per_epoch": 256,
+    "num_epochs": 512,
+    "iter_per_epoch": 512,
     "batch_size": 64,
 }
 
 
 FULL_TRAINING_SETTINGS = {
     "num_epochs": 1024,
-    "iter_per_epoch": 1024,
+    "iter_per_epoch": 4096,
     "batch_size": 64,
 }
 

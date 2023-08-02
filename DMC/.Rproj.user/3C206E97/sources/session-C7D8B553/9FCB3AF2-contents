@@ -1,0 +1,221 @@
+# Rcpp added to ...
+# An EXG stop-signal example with TRIGGER and GO FAILURE and CONTEXT
+# INDEPENDENT parametrization (i.e., same go parameters on go and stop trials).
+# 2-accumulator race suitable for high accuracy data like BEESTS.
+
+# NB: This model is picky about the response factor, the first level must be NR
+
+rm(list=ls())
+source ("dmc/dmc.R")
+load_model ("EXG-SS","exgSS.R")
+
+
+# trigger and go failures
+model <- model.dmc(
+    # SS stands for trial type (GO or Stop-signal [SS]):
+    factors=list(S=c("s1","s2"),SS=c("GO","SS")),
+    # NR stands for "No response", i.e., go omission & successful inhibitions:
+    responses=c("NR","r1","r2"),
+    # Match scores correct responses for each GO stimulus as usual, and scores
+    # the "correct" stimulus corresponding to an NR response, but the latter has
+    # no effect (it just avoids a standard check making sure that each response is scored):
+    match.map=list(M=list(s1="r1",s2="r2",s1="NR")),
+    p.map=list(mu="M",sigma="M",tau="M",tf="1",muS="1",sigmaS="1",tauS="1",gf="1"),
+    # No errors:
+    constants=c(mu.false=1e6,sigma.false=.001,tau.false=.001),
+    type="exgss")
+
+# This gives mean GoRT of .5 + .08 = .58 and SD Go RT of sqrt(.05^2+.08^2) = 0.09
+# and mean SSRT of .2+.05 = 0.25 and SD SSRT of sqrt(.03^2+.05^2) = 0.06:
+p.vector  <- c(mu.true=.5,muS=.2,sigma.true=.05,sigmaS=.03,tau.true=.08,tauS=.05,tf=.1,gf=.1)
+
+
+# 1000 trials, 25% stop
+n <- c(375,375,125,125)
+data <- data.model.dmc(simulate.dmc(p.vector,model,staircase=.05,n=n,SSD=c(Inf,Inf,.25,.25)),model)
+
+#### LEO: following code allows you to explore the plausibility of simulated ----
+####      data we have to be careful we arent prodcing crazy stuff and will
+####      likley have to come up with some filtering rules ....
+
+# Plot go RT distribution;
+# P(NA) = Probability of go omission;
+# Accuracy is computed as correct go/(all go - go omissions):
+correct <- as.numeric(data$S)==(as.numeric(data$R)-1)
+plot.cell.density(data[data$SS=="GO",],
+                  C=correct[data$SS=="GO"],
+                  ymax=5,main="Go RTs")
+
+# Overall accuracy on go task (i.e., proportion go omissions in this case; remember, no errors!):
+tapply(as.numeric(data$S)==(as.numeric(data$R)-1),data$SS,mean,na.rm=TRUE)["GO"]
+
+# Show the different SSDs:
+sort(tapply(as.character(data$SSD),data[,c("SS")],unique)$SS)
+
+# Show the number of trials for each SSD:
+Ns = tapply(data$RT,data$SSD,length)
+Ns
+
+# Show response rate:
+tapply(!is.na(data$RT),data[,c("SS")],mean)
+
+# Response rate broken down by SSD & corresponding inhibition function:
+tapply(!is.na(data$RT),data[,c("SS","SSD")],mean)
+plot_SS_if.dmc(data)  # P(Respond) should increase as a function of SSD
+
+# Plot median signal-respond RT per SSD:
+tapply(data$RT,data$SSD,median,na.rm=TRUE)
+plot_SS_srrt.dmc(data) # Median SRRT should increases as a function of SSD
+
+# Show number of signal-respond RTs per SSD:
+Nr = tapply(!is.na(data$RT),data[,c("SS","SSD")],sum)[2,]
+Nr
+
+# Signal-respond RTs should be faster than go RTs:
+hist(data$RT[data$SS=="GO"],breaks="fd",main="SRRT vs. Go RT",freq=F,ylim=c(0,8))
+lines(density(data$RT[data$SS=="SS"],na.rm=T),col="red",lwd=2)
+
+
+# check likelihoods are the same ----
+
+source("dmc/models/EXG-SS/dists.R")
+rlike  <- likelihood.dmc(p.vector,data)
+Rcpp::sourceCpp(file = "dmc/models/EXG-SS/dists.cpp")
+clike  <- likelihood.dmc(p.vector,data)
+summary(rlike-clike)
+
+
+# Fitting ----
+
+# Uniform (scaled beta) priors:
+p1 <- p.vector; p1[1:length(p1)] <- 1; p1
+p.prior <- prior.p.dmc(
+  dists = rep("beta",length(p1)),p1=p1,p2=rep(1,length(p1)), # Uniform(0,1)
+  lower=rep(0,length(p1)),upper=c(rep(2,2),rep(.5,4),rep(1,2)) # Scale to Uniform(lower,upper)
+)
+par(mfcol=c(2,4)); for (i in names(p.prior)) plot.prior(i,p.prior,ylim = c(0,4))
+
+#### Time sampling
+samples <- samples.dmc(nmc=100,p.prior,data)
+
+source("dmc/models/EXG-SS/dists.R")
+system.time({
+  samplesR2 <- run.dmc(samples,report=1,p.migrate=.05)
+})
+save(data,samples,samplesR2,file="exg2R.RData")
+
+Rcpp::sourceCpp(file = "dmc/models/EXG-SS/dists.cpp")
+system.time({
+  samplesC2 <- run.dmc(samples,report=1,p.migrate=.05)
+})
+save(data,samples,samplesC2,file="exg2C.RData")
+
+
+# # RUN.dmc in run_exg2.R
+#    user  system elapsed
+# 483.721   5.315 490.399
+# # and run_exg2C.R
+#    user  system elapsed
+# 160.211   2.038 162.665
+# ~ 3x speedup
+
+print(load("exg2R.RData"))
+print(load("exg2C.RData"))
+
+par(mfrow=c(1,2))
+plot.dmc(samplesR2c,pll.chain=TRUE)
+plot.dmc(samplesC2c,pll.chain=TRUE)
+
+# Parameter chains look like fat hairy caterpillars:
+plot.dmc(samplesR2c,layout=c(2,4))
+plot.dmc(samplesC2c,layout=c(2,4))
+
+check.recovery.dmc(samplesR2c,p.vector)
+#                mu.true sigma.true tau.true   tf   muS sigmaS tauS   gf
+# True              0.50       0.05     0.08 0.10  0.20   0.03 0.05 0.10
+# 2.5% Estimate     0.49       0.04     0.08 0.01  0.14   0.00 0.00 0.08
+# 50% Estimate      0.49       0.04     0.08 0.11  0.19   0.04 0.06 0.10
+# 97.5% Estimate    0.50       0.05     0.09 0.25  0.24   0.10 0.13 0.12
+# Median-True      -0.01      -0.01     0.00 0.01 -0.01   0.01 0.01 0.00
+
+check.recovery.dmc(samplesC2c,p.vector)
+#                mu.true sigma.true tau.true   tf   muS sigmaS tauS   gf
+# True              0.50       0.05     0.08 0.10  0.20   0.03 0.05 0.10
+# 2.5% Estimate     0.49       0.04     0.08 0.01  0.13   0.00 0.00 0.08
+# 50% Estimate      0.50       0.04     0.08 0.12  0.19   0.04 0.06 0.10
+# 97.5% Estimate    0.50       0.05     0.09 0.25  0.24   0.10 0.15 0.11
+# Median-True       0.00      -0.01     0.00 0.02 -0.01   0.01 0.01 0.00
+
+# Rhat looks good:
+gelman.diag.dmc(samplesR2c)
+gelman.diag.dmc(samplesC2c)
+
+# Priors are nicely updated
+plot.dmc(samplesR2c,layout=c(2,4),p.prior=p.prior)
+plot.dmc(samplesC2c,layout=c(2,4),p.prior=p.prior)
+
+##### CENSOR OBSERVED RTS
+# The following example sets the upper censor (UC) to .75s (mild 5% censoring).
+# !! Have not converged stopfn yet, but as example below shows, still ~3x faster
+
+load_model ("EXG-SS","exgSScens.R")
+
+model <- model.dmc(
+    factors=list(S=c("s1","s2"),SS=c("GO","SS")),
+    responses=c("NR","r1","r2"),
+    match.map=list(M=list(s1="r1",s2="r2",s1="NR")),
+    p.map=list(mu="M",sigma="M",tau="M",tf="1",muS="1",sigmaS="1",tauS="1",UC="1"),
+    constants=c(mu.false=1e6,sigma.false=.001,tau.false=.001,tf=0,
+      UC=.75),
+    type="exgss")
+
+p.vector  <- c(mu.true=.5,muS=.2,sigma.true=.05,sigmaS=.03,tau.true=.08,tauS=.05)
+
+# Fairly large sample
+n <- c(750,750,250,250)
+data <- data.model.dmc(simulate.dmc(p.vector,model,staircase=.05,n=n,
+  SSD=c(Inf,Inf,.25,.25)),model)
+
+
+# At c=.6 censoring is severe (~1/3), at 0.75 only 5%
+correct <- as.numeric(data$S)==(as.numeric(data$R)-1)
+plot.cell.density(data[data$SS=="GO",],C=correct[data$SS=="GO"],
+  main="Go RTs",lpos="topleft")
+mean(is.na(data[data$SS=="GO","RT"]))
+
+
+# Uniform (scaled beta) priors:
+p1 <- p.vector; p1[1:length(p1)] <- 1; p1
+p.prior <- prior.p.dmc(
+  dists = rep("beta",length(p1)),p1=p1,p2=rep(1,length(p1)), # Uniform(0,1)
+  lower=rep(0,length(p1)),upper=c(rep(2,2),rep(.5,4)) # Scale to Uniform(lower,upper)
+)
+# par(mfcol=c(2,3)); for (i in names(p.prior)) plot.prior(i,p.prior,ylim = c(0,4))
+
+system.time({
+ par(mfcol=c(2,3))
+  p="tau.true"; profile.dmc(p,p.vector[p]*.5,p.vector[p]*1.5,p.vector,data)
+  p="tauS"; profile.dmc(p,p.vector[p]*.5,p.vector[p]*1.5,p.vector,data)
+  p="sigma.true"; profile.dmc(p,p.vector[p]*.5,p.vector[p]*1.5,p.vector,data)
+  p="sigmaS"; profile.dmc(p,p.vector[p]*.5,p.vector[p]*1.5,p.vector,data)
+  p="mu.true"; profile.dmc(p,p.vector[p]*.9,p.vector[p]*1.1,p.vector,data)
+  p="muS"; profile.dmc(p,p.vector[p]*.9,p.vector[p]*1.1,p.vector,data)
+})
+ #   user  system elapsed
+ # 24.808   0.348  25.433
+
+
+Rcpp::sourceCpp(file = "dmc/models/EXG-SS/dists.cpp")
+system.time({
+ par(mfcol=c(2,3))
+  p="tau.true"; profile.dmc(p,p.vector[p]*.5,p.vector[p]*1.5,p.vector,data)
+  p="tauS"; profile.dmc(p,p.vector[p]*.5,p.vector[p]*1.5,p.vector,data)
+  p="sigma.true"; profile.dmc(p,p.vector[p]*.5,p.vector[p]*1.5,p.vector,data)
+  p="sigmaS"; profile.dmc(p,p.vector[p]*.5,p.vector[p]*1.5,p.vector,data)
+  p="mu.true"; profile.dmc(p,p.vector[p]*.9,p.vector[p]*1.1,p.vector,data)
+  p="muS"; profile.dmc(p,p.vector[p]*.9,p.vector[p]*1.1,p.vector,data)
+})
+  #  user  system elapsed
+  # 8.311   0.222   8.693
+
+##### ARI model not tested, but looks like it should work.

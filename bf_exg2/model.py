@@ -19,7 +19,7 @@ def rt(params, SSD):
     if go_rt < ss_rt:
         return go_rt
     else:
-        return 0.0
+        return -1.0
 
 
 @njit(cache=True)
@@ -31,10 +31,10 @@ def rts_stop(params, n_ss, SSD_start, SSD_step, SSD_ceil):
     for i in range(n_ss):
         SSD[i] = ssd
         rts[i] = rt(params, SSD[i])
-        if rts[i] == 0.0:
+        if rts[i] == -1.0:
             if ssd < SSD_ceil:
                 ssd += SSD_step
-        elif ssd > SSD_step:
+        elif ssd > 0.0:
             ssd -= SSD_step
     return rts, SSD
 
@@ -53,7 +53,7 @@ def rts(params, context):
         dtype=np.float32,
     )
     RTs = np.concatenate((rts_ss, rts_go))
-    SSDs = np.concatenate((SSDs, np.repeat(0.0, context[2])))
+    SSDs = np.concatenate((SSDs, np.repeat(-1.0, context[2])))
     return np.stack((RTs, SSDs), axis=1)
 
 

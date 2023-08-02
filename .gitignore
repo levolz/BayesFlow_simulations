@@ -131,4 +131,6 @@ dmypy.json
 
 # other files
 validation_data/
-check_points/
+checkpoints/
+.index
+.code-workspace
